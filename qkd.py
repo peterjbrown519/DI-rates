@@ -62,7 +62,8 @@ def compute_entropy(SDP, q):
 
 	# We can also decide whether to perform the final optimization in the sequence
 	# or bound it trivially. Best to keep it unless running into numerical problems
-	# with it. There's potentially also a nontrivial way to bound it (need to investigate).
+	# with it. Added a nontrivial bound when removing the final term
+	# (WARNING: proof is not yet in the associated paper). 
 	if KEEP_M:
 		num_opt = len(T)
 	else:
