@@ -3,22 +3,31 @@ Script to compute converging lower bounds on the rates of local randomness
 extracted from two devices achieving a minimal expected CHSH score. More specifically,
 computes a sequence of lower bounds on the problem
 
- 			inf H(A|X=0,E)
+			inf H(A|X=0,E)
 
 where the infimum is over all quantum devices achieving a CHSH score of w. See
-the accompanying paper for more details (this script was used for Figure 1).
+the accompanying paper for more details (this script can be used to generate data for Figure 1).
 """
 
 
 def objective(ti):
-	# Note we only define the first operator in Alice and Bob's measurements
-	# We then denote the second operator by 1-X, where X is the first operator
-	# in the measurement.
-	return (A[0][0]*(Dagger(Z[0]) + Z[0]) + (1-A[0][0])*(Dagger(Z[1]) + Z[1])) + \
-		(1-ti) * (A[0][0]*Dagger(Z[0])*Z[0] + (1-A[0][0])*Dagger(Z[1])*Z[1]) + \
-		ti * (Z[0]*Dagger(Z[0]) + Z[1]*Dagger(Z[1]))
+	"""
+	Returns the objective function for the faster computations.
+	Randomness generation on X=0 and only two outcomes for Alice.
+
+		ti  --	i-th node
+	"""
+	obj = 0.0
+	F = [A[0][0], 1-A[0][0]]
+	for a in range(len(F)):
+		obj += F[a] * (Z[a] + Dagger(Z[a]) + (1-ti)*Dagger(Z[a])*Z[a]) + ti*Z[a]*Dagger(Z[a])
+
+	return obj
 
 def score_constraints(score):
+	"""
+	Returns CHSH score constraint
+	"""
 	chsh_expr = (A[0][0]*B[0][0] + (1-A[0][0])*(1-B[0][0]) + \
 				 A[0][0]*B[1][0] + (1-A[0][0])*(1-B[1][0]) + \
 				 A[1][0]*B[0][0] + (1-A[1][0])*(1-B[0][0]) + \
@@ -27,6 +36,10 @@ def score_constraints(score):
 	return [chsh_expr - score]
 
 def get_subs():
+	"""
+	Returns any substitution rules to use with ncpol2sdpa. E.g. projections and
+	commutation relations.
+	"""
 	subs = {}
 	# Get Alice and Bob's projective measurement constraints
 	subs.update(ncp.projective_measurement_constraints(A,B))
@@ -39,61 +52,77 @@ def get_subs():
 	return subs
 
 def get_extra_monomials():
+	"""
+	Returns additional monomials to add to sdp relaxation.
+	"""
+
 	monos = []
 
-	# It should be sufficient to consider words of length at most 2 in the Z ops
-	Z2 = [z for z in get_monomials(Z,2) if ncdegree(z)>=2]
-	AB = ncp.flatten([A,B])
-	for a in AB:
-		for z in Z2:
-			monos += [a*z]
-	return monos[:]
-
-def get_extra_monomials_fast():
-	# A function that defines fewer but seemingly important monomial sets
-	monos = []
-
+	# Add ABZ
 	ZZ = Z + [Dagger(z) for z in Z]
 	Aflat = ncp.flatten(A)
 	Bflat = ncp.flatten(B)
 	for a in Aflat:
-		for z in Z:
-			monos += [a*Dagger(z)*z]
 		for b in Bflat:
 			for z in ZZ:
 				monos += [a*b*z]
+
+	# Add monos appearing in objective function
+	for z in Z:
+		monos += [A[0][0]*Dagger(z)*z]
 
 	return monos[:]
 
 
 def generate_quadrature(m):
-	# Returns the nodes/weights of the Gauss-Radau quadrature
+	"""
+	Generates the Gaussian quadrature nodes t and weights w. Due to the way the
+	package works it generates 2*M nodes and weights. Maybe consider finding a
+	better package if want to compute for odd values of M.
+
+		m	--	number of nodes in quadrature / 2
+	"""
 	t, w = chaospy.quad_gauss_radau(m, chaospy.Uniform(0, 1), 1)
 	t = t[0]
 	return t, w
 
-def compute_entropy(t, w):
-	# We actually compute a faster lower bound on the problem.
-	# Optimizing each node/weight term individually.
+def compute_entropy(SDP):
+	"""
+	Computes lower bound on H(A|X=0,E) using the fast (but less tight) method
 
-	cm = 0.0	# Constant term
-	ent = 0.0	# NPA term
+		SDP -- sdp relaxation object
+	"""
+	ck = 0.0		# kth coefficient
+	ent = 0.0		# lower bound on H(A|X=0,E)
 
-	for k in range(len(t)):
-		# Multiplicative factor for kth term
-		ck = w[k]/(t[k] * log(2))
-		cm += ck
+	# We can also decide whether to perform the final optimization in the sequence
+	# or bound it trivially. Best to keep it unless running into numerical problems
+	if KEEP_M:
+		num_opt = len(T)
+	else:
+		num_opt = len(T) - 1
 
-		# Change the objective to fit the new nodes
-		new_objective = objective(t[k])
-		sdp.set_objective(new_objective)
+	for k in range(num_opt):
+		ck = W[k]/(T[k] * log(2))
 
-		# Solve sdp and add result to total
-		sdp.solve('mosek')
-		ent += ck * sdp.dual
+		# Get the k-th objective function
+		new_objective = objective(T[k])
 
-	return cm + ent
+		SDP.set_objective(new_objective)
+		SDP.solve('mosek')
 
+		if SDP.status == 'optimal':
+			# 1 contributes to the constant term
+			ent += ck * (1 + SDP.dual)
+		else:
+			# If we didn't solve the SDP well enough then just bound the entropy
+			# trivially
+			ent = 0
+			if VERBOSE:
+				print('Bad solve: ', k, SDP.status)
+			break
+
+	return ent
 
 # Some functions to help compute the known optimal bounds for the CHSH rates
 def hmin(w):
@@ -107,13 +136,15 @@ def Hvn(w):
 import numpy as np
 from math import sqrt, log2, log, pi, cos, sin
 import ncpol2sdpa as ncp
-from ncpol2sdpa.nc_utils import ncdegree, get_monomials
-from ncpol2sdpa.solver_common import get_xmat_value
 from sympy.physics.quantum.dagger import Dagger
 import mosek
 import chaospy
 
-LEVEL = 2						# Level of relaxation
+LEVEL = 2						# NPA relaxation level
+M = 4							# Number of nodes / 2 in gaussian quadrature
+T, W = generate_quadrature(M)	# Nodes, weights of quadrature
+KEEP_M = 0						# Optimizing mth objective function?
+VERBOSE = 1						# If > 1 then ncpol2sdpa will also be verbose
 WMAX = 0.5 + sqrt(2)/4			# Maximum CHSH score
 
 # Description of Alice and Bobs devices (each input has 2 outputs)
@@ -142,14 +173,14 @@ test_score = 0.85
 score_cons = score_constraints(test_score)
 
 # Get any extra monomials we wanted to add to the problem
-extra_monos = get_extra_monomials_fast()
+extra_monos = get_extra_monomials()
 
 # Define the objective function (changed later)
 obj = objective(1)
 
 # Finally defining the sdp relaxation in ncpol2sdpa
 ops = ncp.flatten([A,B,Z])
-sdp = ncp.SdpRelaxation(ops, verbose = 0, normalized=True, parallel=0)
+sdp = ncp.SdpRelaxation(ops, verbose = VERBOSE-1, normalized=True, parallel=0)
 sdp.get_relaxation(level = LEVEL,
 					equalities = op_eqs[:],
 					inequalities = op_ineqs[:],
@@ -159,44 +190,45 @@ sdp.get_relaxation(level = LEVEL,
 					substitutions = substitutions,
 					extramonomials = extra_monos)
 
-
-# Note that the way chaospy works this will actually be a 2*M Gauss-Radau quadrature -- (m = 2*M)
-M = 3
-ts, ws = generate_quadrature(M)
-
-# Test
-ent = compute_entropy(ts, ws)
-print(Hvn(test_score), ent)
-exit()
+# # Test
+# ent = compute_entropy(sdp)
+# print("Analytical bound:", Hvn(test_score))
+# print("SDP bound:" , ent)
+# exit()
 
 
 """
 Now let's collect some data
 """
 # We'll loop over the different CHSH scores and compute lower bounds on the rate of the protocol
-scores = np.linspace(0.75, 0.83, 20)[:-1].tolist() + np.linspace(0.83, WMAX-0.0001, 20).tolist()
+scores = np.linspace(0.75, WMAX-1e-4, 20).tolist()
 entropy = []
 for score in scores:
+	# Modify the CHSH score
 	sdp.process_constraints(equalities = op_eqs[:],
 						inequalities = op_ineqs[:],
 						momentequalities = moment_eqs[:],
 						momentinequalities = moment_ineqs[:] + score_constraints(score))
-	ent = compute_entropy(ts, ws)
+	# Get the resulting entropy bound
+	ent = compute_entropy(sdp)
 	entropy += [ent]
 	print(score, Hvn(score), ent)
 
-np.savetxt('./data/chsh_local_' + str(2*M) + 'M.csv', [scores, entropy], delimiter = ',')
+# np.savetxt('./data/chsh_local_' + str(2*M) + 'M.csv', [scores, entropy], delimiter = ',')
 
 entropy_h = [Hvn(score) for score in scores]
 entropy_hmin = [hmin(score) for score in scores]
 # np.savetxt('./data/analytic_H_chsh_local.csv', [scores, entropy_h], delimiter = ',')
 # np.savetxt('./data/analytic_Hmin_chsh_local.csv', [scores, entropy_hmin], delimiter = ',')
 
+"""
+Plot and compare
+"""
 import matplotlib.pyplot as plt
 plt.plot(scores, entropy)
 plt.plot(scores, entropy_h)
 plt.plot(scores, entropy_hmin)
 plt.ylim(0.0, 1.0)
 plt.xlim(0.75, WMAX)
-plt.savefig('chsh_local_rates.png')
+# plt.savefig('chsh_local_rates.png')
 plt.show()

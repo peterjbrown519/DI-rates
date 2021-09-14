@@ -1,12 +1,17 @@
 """
-Notes to self:
+Script to compute converging lower bounds on the DIQKD rates of a protocol using
+two devices that are constrained by some 2 input 2 output distribution.
+More specifically, computes a sequence of lower bounds on the problem
 
-are we missing q anywhere (where we have eta)?
+			inf H(A|X=0,E) - H(A|X=0, Y=2, B)
 
-write a description at the top of this file
+where the infimum is over all quantum devices with some expected behaviour. See
+the accompanying paper for more details (Figure 4)
 
-at the moment only implements the fast method of optimizing
-should also check the slow method...
+Code also analyzes the scenario where we have inefficient detectors and implements
+a subroutine to optimize the randomness gained from a family of two-qubit systems.
+Also uses the noisy-preprocessing technique in order to boost rates. Bob is given
+third input for key generation and doesn't bin his no-click when generating key. 
 """
 
 
@@ -52,7 +57,7 @@ def objective(ti, q):
 
 def compute_entropy(SDP, q):
 	"""
-	Computes lower bound on H(A|X=0,E) using the fast (but less accurate) method
+	Computes lower bound on H(A|X=0,E) using the fast (but less tight) method
 
 		SDP -- sdp relaxation object
 		q 	-- probability of bitflip
@@ -63,7 +68,7 @@ def compute_entropy(SDP, q):
 	# We can also decide whether to perform the final optimization in the sequence
 	# or bound it trivially. Best to keep it unless running into numerical problems
 	# with it. Added a nontrivial bound when removing the final term
-	# (WARNING: proof is not yet in the associated paper). 
+	# (WARNING: proof is not yet in the associated paper).
 	if KEEP_M:
 		num_opt = len(T)
 	else:
@@ -451,7 +456,7 @@ def optimise_rate(SDP, sys, eta, q):
 	best_q = q
 
 	while STILL_OPTIMIZING:
-		new_rate, new_sys = optimise_sys(SDP, best_sys[:], eta, best_q)
+		_, new_sys = optimise_sys(SDP, best_sys[:], eta, best_q)
 		new_rate, new_q = optimise_q(SDP, new_sys[:], eta, best_q)
 
 
@@ -523,8 +528,6 @@ from math import sqrt, log2, log, pi, cos, sin
 import ncpol2sdpa as ncp
 import qutip as qtp
 from scipy.optimize import minimize
-from ncpol2sdpa.nc_utils import ncdegree
-from ncpol2sdpa.solver_common import get_xmat_value
 from sympy.physics.quantum.dagger import Dagger
 import mosek
 import chaospy
