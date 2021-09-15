@@ -323,6 +323,11 @@ def get_extra_monomials():
 			for z in ZZ:
 				monos += [a*b*z]
 
+	for a in A[0]:
+		for b in B[0]:
+			for z in Z:
+				monos += [a*b*z*Dagger(z), a*b*Dagger(z)*z]
+
 	return monos[:]
 
 
@@ -352,7 +357,7 @@ from scipy.optimize import minimize
 
 
 LEVEL = 2						# NPA relaxation level
-M = 2							# Number of nodes / 2 in gaussian quadrature
+M = 6							# Number of nodes / 2 in gaussian quadrature
 T, W = generate_quadrature(M)	# Nodes, weights of quadrature
 KEEP_M = 0						# Optimizing mth objective function?
 VERBOSE = 2						# If > 1 then ncpol2sdpa will also be verbose
@@ -385,7 +390,7 @@ extra_monos = get_extra_monomials() # Extra monomials to add to the relaxation b
 
 
 # Define the moment equality constraints given by the distribution induced by sys and eta
-test_sys = [pi/4, 0, pi/2, pi/4, -pi/4]
+test_sys = [0.519, -1.769, 0.041, -0.670, 0.875]		# Optimized system for eta = 0.96
 test_eta = 0.96
 score_cons = score_constraints(test_sys, A, B, test_eta)
 
@@ -402,11 +407,11 @@ sdp.get_relaxation(level = LEVEL,
 					substitutions = substitutions,
 					extramonomials = extra_monos)
 
-
 # Test
-opt_rate, opt_sys = optimise_rate(sdp, test_sys[:], test_eta)
-print(opt_rate)
+# opt_rate, opt_sys = optimise_rate(sdp, test_sys[:], test_eta)
+# print(opt_rate)
 ent = compute_entropy(sdp)
+print(ent)
 exit()
 
 
