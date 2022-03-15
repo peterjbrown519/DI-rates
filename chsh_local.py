@@ -20,7 +20,7 @@ def objective(ti):
     obj = 0.0
     F = [A[0][0], 1-A[0][0]]
     for a in range(len(F)):
-    obj += F[a] * (Z[a] + Dagger(Z[a]) + (1-ti)*Dagger(Z[a])*Z[a]) + ti*Z[a]*Dagger(Z[a])
+        obj += F[a] * (Z[a] + Dagger(Z[a]) + (1-ti)*Dagger(Z[a])*Z[a]) + ti*Z[a]*Dagger(Z[a])
 
     return obj
 
@@ -29,9 +29,9 @@ def score_constraints(score):
     Returns CHSH score constraint
     """
     chsh_expr = (A[0][0]*B[0][0] + (1-A[0][0])*(1-B[0][0]) + \
-     A[0][0]*B[1][0] + (1-A[0][0])*(1-B[1][0]) + \
-     A[1][0]*B[0][0] + (1-A[1][0])*(1-B[0][0]) + \
-     A[1][0]*(1-B[1][0]) + (1-A[1][0])*B[1][0])/4.0
+        A[0][0]*B[1][0] + (1-A[0][0])*(1-B[1][0]) + \
+        A[1][0]*B[0][0] + (1-A[1][0])*(1-B[0][0]) + \
+        A[1][0]*(1-B[1][0]) + (1-A[1][0])*B[1][0])/4.0
 
     return [chsh_expr - score]
 
@@ -46,8 +46,8 @@ def get_subs():
 
     # Finally we note that Alice and Bob's operators should All commute with Eve's ops
     for a in ncp.flatten([A,B]):
-    for z in Z:
-    subs.update({z*a : a*z, Dagger(z)*a : a*Dagger(z)})
+        for z in Z:
+            subs.update({z*a : a*z, Dagger(z)*a : a*Dagger(z)})
 
     return subs
 
@@ -63,13 +63,13 @@ def get_extra_monomials():
     Aflat = ncp.flatten(A)
     Bflat = ncp.flatten(B)
     for a in Aflat:
-    for b in Bflat:
-    for z in ZZ:
-    monos += [a*b*z]
+        for b in Bflat:
+            for z in ZZ:
+                monos += [a*b*z]
 
     # Add monos appearing in objective function
     for z in Z:
-    monos += [A[0][0]*Dagger(z)*z]
+        monos += [A[0][0]*Dagger(z)*z]
 
     return monos[:]
 
@@ -98,29 +98,29 @@ def compute_entropy(SDP):
     # We can also decide whether to perform the final optimization in the sequence
     # or bound it trivially. Best to keep it unless running into numerical problems
     if KEEP_M:
-    num_opt = len(T)
+        num_opt = len(T)
     else:
-    num_opt = len(T) - 1
+        num_opt = len(T) - 1
 
     for k in range(num_opt):
-    ck = W[k]/(T[k] * log(2))
+        ck = W[k]/(T[k] * log(2))
 
-    # Get the k-th objective function
-    new_objective = objective(T[k])
+        # Get the k-th objective function
+        new_objective = objective(T[k])
 
-    SDP.set_objective(new_objective)
-    SDP.solve('mosek')
+        SDP.set_objective(new_objective)
+        SDP.solve('mosek')
 
-    if SDP.status == 'optimal':
-    # 1 contributes to the constant term
-    ent += ck * (1 + SDP.dual)
-    else:
-    # If we didn't solve the SDP well enough then just bound the entropy
-    # trivially
-    ent = 0
-    if VERBOSE:
-    print('Bad solve: ', k, SDP.status)
-    break
+        if SDP.status == 'optimal':
+            # 1 contributes to the constant term
+            ent += ck * (1 + SDP.dual)
+        else:
+            # If we didn't solve the SDP well enough then just bound the entropy
+            # trivially
+            ent = 0
+            if VERBOSE:
+                print('Bad solve: ', k, SDP.status)
+            break
 
     return ent
 
