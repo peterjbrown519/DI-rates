@@ -92,8 +92,8 @@ def compute_entropy(SDP):
 
         SDP -- sdp relaxation object
     """
-    ck = 0.0        # kth coefficient
-    ent = 0.0        # lower bound on H(A|X=0,E)
+    ck = 0.0                             # kth coefficient
+    ent = -1.0 / (len(T)**2 * log(2))    # lower bound on H(A|X=0,E)
 
     # We can also decide whether to perform the final optimization in the sequence
     # or bound it trivially. Best to keep it unless running into numerical problems
@@ -101,6 +101,7 @@ def compute_entropy(SDP):
         num_opt = len(T)
     else:
         num_opt = len(T) - 1
+        ent += W[num_opt]/(T[num_opt] * log(2))
 
     for k in range(num_opt):
         ck = W[k]/(T[k] * log(2))
